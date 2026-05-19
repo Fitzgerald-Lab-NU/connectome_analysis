@@ -11,17 +11,25 @@ from .io import (
     save_plot,
     setup_gcs,
 )
-from .plotting import pq_to_xy
+from .plotting import (
+    pq_to_xy, 
+    plot_spatial_kernel_hex,
+    hex_distance, 
+    hex_offsets
+    )
 
 __all__ = [
     "batch_read_swc_from_gcs",
     "construct_path",
     "pq_to_xy",
+    "hex_distance",
+    "hex_offsets",
+    "plot_spatial_kernel_hex"
     "read_feather_gcs",
-    "read_obj_from_gcs",
+    # "read_obj_from_gcs",
     "read_parquet_gcs",
-    "read_swc_from_gcs",
-    "save_figure",
-    "save_plot",
+    # "read_swc_from_gcs",
+    # "save_figure",
+    # "save_plot",
     "setup_gcs",
 ]
