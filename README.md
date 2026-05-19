@@ -8,6 +8,9 @@ T4/T5 motion pathway analyses. The main goal is to assign column identities to
 neurons and synapses that do not come with explicit column annotations, enabling
 spatial kernel analyses of optic lobe connectivity.
 
+![alt text](/images/T5b_input_RF.png)
+
+
 ## Project Overview
 
 The male CNS connectome provides column identities for a subset of optic-lobe
