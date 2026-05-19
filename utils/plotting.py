@@ -1,8 +1,12 @@
+"""Plotting helpers for columnar connectome notebooks."""
+
+from __future__ import annotations
+
 import numpy as np
-def pq_to_xy(p, q, hexsize=1.0, rotate=-np.pi/6):
-    """
-    Convert Zhao-style hex coordinates to 2D xy for plotting.
-    """
+
+
+def pq_to_xy(p, q, hexsize: float = 1.0, rotate: float | None = -np.pi / 6):
+    """Convert Zhao-style hex coordinates to 2D xy coordinates."""
     a = q
     b = -p
 

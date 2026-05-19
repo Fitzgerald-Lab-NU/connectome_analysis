@@ -1,392 +1,276 @@
-"""
-Utility Functions for Python Fly Connectome Tutorials
-======================================================
+"""Input/output helpers for connectome analysis notebooks."""
 
-This module provides:
-- Common package imports
-- Warning suppression
-- Helper functions for data access (GCS and local)
-- Plotting utilities
+from __future__ import annotations
 
-Import this at the start of each tutorial notebook:
-    from utils import *
-"""
-
-# ==============================================================================
-# Package Imports
-# ==============================================================================
-
-# Core data manipulation
-import pandas as pd
-import numpy as np
-
-# File I/O
-import pyarrow.feather as feather
-import pyarrow.parquet as pq
-import gcsfs
 import io
 import os
-import re
 import tempfile
 from pathlib import Path
+from typing import Iterable, Sequence
 
-# Visualization
-import matplotlib.pyplot as plt
-import seaborn as sns
-import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
 
-# Network analysis
-import networkx as nx
+VALID_FILE_TYPES = {
+    "meta",
+    "edgelist",
+    "edgelist_simple",
+    "synapses",
+    "skeletons",
+}
 
-# Scientific computing
-from scipy.cluster.hierarchy import linkage, dendrogram, cut_tree
-from scipy.spatial.distance import pdist, squareform
-from scipy.stats import pearsonr, spearmanr
-# import umap
 
-# Progress bars
-from tqdm.auto import tqdm
+def setup_gcs(token: str = "google_default"):
+    """Return a Google Cloud Storage filesystem."""
+    import gcsfs
 
-# Collections
-from collections import Counter
+    return gcsfs.GCSFileSystem(token=token)
 
-# Neuron analysis
-import navis
 
-# Trimesh for 3D meshes
-import trimesh
-
-# ==============================================================================
-# Configuration and Warning Suppression
-# ==============================================================================
-
-# Suppress warnings for cleaner output
-import warnings
-warnings.filterwarnings('ignore', category=FutureWarning)
-warnings.filterwarnings('ignore', category=DeprecationWarning)
-warnings.filterwarnings('ignore', category=UserWarning, module='plotly')
-
-# Pandas display settings
-pd.set_option('display.max_columns', None)
-pd.set_option('display.max_rows', 20)
-pd.set_option('display.width', None)
-
-# Matplotlib settings
-plt.rcParams['figure.dpi'] = 100
-plt.rcParams['savefig.dpi'] = 300
-plt.rcParams['savefig.bbox'] = 'tight'
-
-# Seaborn style
-sns.set_style("whitegrid")
-
-# Navis settings
-navis.config.pbar_hide = True
-
-print("✓ Packages loaded successfully")
-
-# ==============================================================================
-# Helper Functions
-# ==============================================================================
-
-def setup_gcs(token='google_default'):
-    """
-    Setup Google Cloud Storage filesystem.
+def construct_path(
+    data_root: str,
+    dataset: str,
+    file_type: str = "meta",
+    space_suffix: str | None = None,
+    subset: str | None = None,
+) -> str:
+    """Construct a dataset path for local or ``gs://`` connectome data.
 
     Parameters
     ----------
-    token : str
-        Authentication token ('google_default' or 'anon')
-
-    Returns
-    -------
-    gcsfs.GCSFileSystem
-        Authenticated GCS filesystem object
-
-    Notes
-    -----
-    Before using with authenticated buckets:
-        gcloud auth application-default login
+    data_root
+        Root data directory, for example ``connectome_data`` or ``gs://bucket/data``.
+    dataset
+        Dataset name with version, for example ``banc_746``.
+    file_type
+        One of ``meta``, ``edgelist``, ``edgelist_simple``, ``synapses``, or
+        ``skeletons``.
+    space_suffix
+        Skeleton-space suffix. Defaults to ``{dataset_name}_space``.
+    subset
+        Optional subset directory/name, such as ``mushroom_body``.
     """
-    gcs = gcsfs.GCSFileSystem(token=token)
-    return gcs
+    if file_type not in VALID_FILE_TYPES:
+        choices = ", ".join(sorted(VALID_FILE_TYPES))
+        raise ValueError(f"Unknown file_type: {file_type}. Choose one of: {choices}")
 
-
-def construct_path(data_root, dataset, file_type="meta", space_suffix=None, subset=None):
-    """
-    Construct file paths for dataset files.
-
-    Parameters
-    ----------
-    data_root : str
-        Root data directory (can be gs:// or local path)
-    dataset : str
-        Dataset name with version (e.g., "banc_746")
-    file_type : str
-        Type of file: "meta", "edgelist", "edgelist_simple", "synapses", "skeletons"
-    space_suffix : str, optional
-        Space name for skeletons (defaults to native space)
-    subset : str, optional
-        Subset name (e.g., "mushroom_body", "antennal_lobe"). If None, uses top-level files.
-
-    Returns
-    -------
-    str
-        Full path to the file
-
-    Examples
-    --------
-    >>> path = construct_path("gs://bucket/data", "banc_746", "meta")
-    >>> # Returns: gs://bucket/data/banc/banc_746_meta.feather
-
-    >>> path = construct_path("gs://bucket/data", "banc_746", "synapses", subset="mushroom_body")
-    >>> # Returns: gs://bucket/data/banc/mushroom_body/banc_746_mushroom_body_synapses.feather
-    """
-    dataset_name = dataset.split("_")[0]
-
-    extensions = {
+    dataset_name = dataset.split("_", maxsplit=1)[0]
+    extension = {
         "meta": ".feather",
         "edgelist": ".feather",
         "edgelist_simple": ".feather",
-        "synapses": ".parquet" if subset is None else ".feather",  # Subsets use .feather
-        "skeletons": ""  # Directory
-    }
+        "synapses": ".parquet" if subset is None else ".feather",
+        "skeletons": "",
+    }[file_type]
 
-    if file_type not in extensions:
-        raise ValueError(f"Unknown file_type: {file_type}. Choose: {', '.join(extensions.keys())}")
-
-    extension = extensions[file_type]
-
-    # Build subdirectory path
     if subset is not None:
         subdir = f"{dataset_name}/{subset}"
-
-        # For subset files, include subset name in filename
         if file_type == "skeletons":
-            if space_suffix is None:
-                space_suffix = f"{dataset_name}_space"
-
-            if dataset_name == "banc":
-                filename = f"{dataset_name}_{subset}_{space_suffix}_l2_swc{extension}"
-            else:
-                filename = f"{dataset_name}_{subset}_{space_suffix}_swc{extension}"
+            space_suffix = space_suffix or f"{dataset_name}_space"
+            suffix = "l2_swc" if dataset_name == "banc" else "swc"
+            filename = f"{dataset_name}_{subset}_{space_suffix}_{suffix}{extension}"
         elif file_type == "edgelist_simple":
             filename = f"{dataset}_{subset}_simple_edgelist{extension}"
         else:
             filename = f"{dataset}_{subset}_{file_type}{extension}"
     else:
         subdir = dataset_name
-
-        # Standard top-level file naming
         if file_type == "skeletons":
-            if space_suffix is None:
-                space_suffix = f"{dataset_name}_space"
-
-            # BANC uses l2 skeletons
-            if dataset_name == "banc":
-                filename = f"{dataset_name}_{space_suffix}_l2_swc{extension}"
-            else:
-                filename = f"{dataset_name}_{space_suffix}_swc{extension}"
+            space_suffix = space_suffix or f"{dataset_name}_space"
+            suffix = "l2_swc" if dataset_name == "banc" else "swc"
+            filename = f"{dataset_name}_{space_suffix}_{suffix}{extension}"
         elif file_type == "edgelist_simple":
-            # Note: "simple" comes before "edgelist" in filename
             filename = f"{dataset}_simple_edgelist{extension}"
         else:
             filename = f"{dataset}_{file_type}{extension}"
 
-    full_path = f"{data_root}/{subdir}/{filename}"
-    return full_path
+    return f"{data_root.rstrip('/')}/{subdir}/{filename}"
 
 
-def read_feather_gcs(path, gcs_fs=None, cache_dir=".cache", use_cache=True):
-    """
-    Read Feather file from GCS or local path with caching support.
+def read_feather_gcs(
+    path: str | os.PathLike[str],
+    gcs_fs=None,
+    cache_dir: str | os.PathLike[str] = ".cache",
+    use_cache: bool = True,
+):
+    """Read a Feather file from local disk or Google Cloud Storage."""
+    import pandas as pd
+    import pyarrow.feather as feather
 
-    Parameters
-    ----------
-    path : str
-        Path to feather file (can start with gs:// for GCS)
-    gcs_fs : gcsfs.GCSFileSystem, optional
-        GCS filesystem object (required for GCS paths)
-    cache_dir : str
-        Local directory for caching downloaded files (default: .cache)
-    use_cache : bool
-        Whether to use local caching (default: True)
+    path_str = str(path)
+    if not path_str.startswith("gs://"):
+        df = pd.read_feather(path_str)
+        print(f"Loaded {len(df):,} rows")
+        return df
 
-    Returns
-    -------
-    pd.DataFrame
-        Loaded data
+    if gcs_fs is None:
+        raise ValueError("gcs_fs is required for gs:// paths")
 
-    Notes
-    -----
-    When use_cache=True and path is a GCS path:
-    - First run: downloads from GCS and saves to cache_dir
-    - Subsequent runs: loads from cache (much faster!)
-    """
-    if path.startswith("gs://"):
-        if gcs_fs is None:
-            raise ValueError("gcs_fs required for GCS paths")
+    cache_path = _cache_path(path_str, cache_dir)
+    if use_cache and cache_path.exists():
+        df = pd.read_feather(cache_path)
+        print(f"Loaded {len(df):,} rows from cache")
+        return df
 
-        # Generate cache filename
-        cache_filename = path.replace("gs://", "").replace("/", "_")
-        cache_path = os.path.join(cache_dir, cache_filename)
+    content = _read_gcs_file(gcs_fs, path_str)
+    df = feather.read_feather(io.BytesIO(content))
+    print(f"Loaded {len(df):,} rows from GCS")
 
-        # Check if cached version exists
-        if use_cache and os.path.exists(cache_path):
-            print(f"📦 Loading from cache: {cache_filename}")
-            df = pd.read_feather(cache_path)
-            print(f"✓ Loaded {len(df):,} rows (cached)")
-            return df
+    if use_cache:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_feather(cache_path)
+        print(f"Cached to {cache_path}")
 
-        # Download from GCS with progress
-        gcs_path = path.replace("gs://", "")
+    return df
 
-        print(f"📥 Downloading from GCS: {os.path.basename(gcs_path)}")
 
-        # Get file size for progress bar
+def read_parquet_gcs(
+    path: str | os.PathLike[str],
+    gcs_fs=None,
+    columns: Sequence[str] | None = None,
+    cache_dir: str | os.PathLike[str] = ".cache",
+    use_cache: bool = True,
+):
+    """Read a Parquet file from local disk or Google Cloud Storage."""
+    import pandas as pd
+    import pyarrow.parquet as pq
+
+    path_str = str(path)
+    if not path_str.startswith("gs://"):
+        df = pd.read_parquet(path_str, columns=columns)
+        print(f"Loaded {len(df):,} rows")
+        return df
+
+    if gcs_fs is None:
+        raise ValueError("gcs_fs is required for gs:// paths")
+
+    cache_path = _cache_path(path_str, cache_dir)
+    if use_cache and cache_path.exists():
+        df = pd.read_parquet(cache_path, columns=columns)
+        print(f"Loaded {len(df):,} rows from cache")
+        return df
+
+    content = _read_gcs_file(gcs_fs, path_str)
+    df = pq.read_table(io.BytesIO(content), columns=columns).to_pandas()
+    print(f"Loaded {len(df):,} rows from GCS")
+
+    if use_cache:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_df = pq.read_table(io.BytesIO(content)).to_pandas() if columns else df
+        cache_df.to_parquet(cache_path)
+        print(f"Cached to {cache_path}")
+
+    return df
+
+
+def read_swc_from_gcs(gcs_fs, swc_path: str):
+    """Read a single SWC file from Google Cloud Storage using navis."""
+    import navis
+
+    with gcs_fs.open(_strip_gs_prefix(swc_path), "rb") as handle:
+        return navis.read_swc(io.BytesIO(handle.read()))
+
+
+def batch_read_swc_from_gcs(
+    gcs_fs,
+    directory: str,
+    filenames: Iterable[str],
+    show_progress: bool = True,
+):
+    """Read multiple SWC files from Google Cloud Storage into a NeuronList."""
+    import navis
+    from tqdm.auto import tqdm
+
+    iterator = tqdm(filenames, desc="Reading neurons") if show_progress else filenames
+    neurons = []
+
+    for filename in iterator:
+        swc_path = f"{directory.rstrip('/')}/{filename}"
         try:
-            file_info = gcs_fs.info(gcs_path)
-            file_size = file_info.get('size', 0)
-            file_size_mb = file_size / (1024 * 1024)
-            print(f"   Size: {file_size_mb:.1f} MB")
-        except:
-            file_size = None
+            neurons.append(read_swc_from_gcs(gcs_fs, swc_path))
+        except Exception as exc:
+            if show_progress:
+                print(f"Error reading {filename}: {exc}")
 
-        # Read with progress indication
-        with gcs_fs.open(gcs_path, 'rb') as f:
-            if file_size:
-                # Wrap file object with tqdm for progress
-                with tqdm(total=file_size, unit='B', unit_scale=True, desc="Downloading") as pbar:
-                    # Read in chunks to show progress
-                    chunks = []
-                    chunk_size = 1024 * 1024  # 1MB chunks
-                    while True:
-                        chunk = f.read(chunk_size)
-                        if not chunk:
-                            break
-                        chunks.append(chunk)
-                        pbar.update(len(chunk))
+    return navis.NeuronList(neurons)
 
-                    # Combine chunks and parse
-                    content = b''.join(chunks)
-                    df = feather.read_feather(io.BytesIO(content))
-            else:
-                # Fallback without progress
-                df = feather.read_feather(f)
 
-        print(f"✓ Loaded {len(df):,} rows from GCS")
+def read_obj_from_gcs(gcs_fs, obj_path: str):
+    """Read an OBJ mesh file from Google Cloud Storage."""
+    import trimesh
 
-        # Cache for future use
-        if use_cache:
-            os.makedirs(cache_dir, exist_ok=True)
-            df.to_feather(cache_path)
-            print(f"💾 Cached to: {cache_path}")
+    with gcs_fs.open(_strip_gs_prefix(obj_path), "rb") as handle:
+        content = handle.read()
 
-        return df
+    with tempfile.NamedTemporaryFile(suffix=".obj", delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        return trimesh.load_mesh(tmp_path)
+    finally:
+        os.unlink(tmp_path)
+
+
+def save_figure(fig, filename: str | os.PathLike[str], format: str = "png", **kwargs) -> None:
+    """Save a matplotlib or plotly figure."""
+    if hasattr(fig, "write_html"):
+        if format == "html":
+            fig.write_html(filename, **kwargs)
+        elif format == "png":
+            fig.write_image(filename, **kwargs)
+        else:
+            raise ValueError(f"Unsupported plotly format: {format}")
     else:
-        # Local file
-        df = pd.read_feather(path)
-        print(f"✓ Loaded {len(df):,} rows")
-        return df
+        fig.savefig(filename, format=format, **kwargs)
+
+    print(f"Saved figure: {filename}")
 
 
-def read_parquet_gcs(path, gcs_fs=None, columns=None, cache_dir=".cache", use_cache=True):
-    """
-    Read Parquet file from GCS or local path with caching support.
+def save_plot(
+    fig,
+    name: str,
+    img_dir: str | os.PathLike[str] | None = None,
+    format: str = "png",
+    **kwargs,
+) -> None:
+    """Save a figure under ``img_dir`` using ``name`` and ``format``."""
+    if img_dir is None:
+        import sys
 
-    Parameters
-    ----------
-    path : str
-        Path to parquet file
-    gcs_fs : gcsfs.GCSFileSystem, optional
-        GCS filesystem object (required for GCS paths)
-    columns : list, optional
-        List of columns to load (None = all)
-    cache_dir : str
-        Local directory for caching downloaded files (default: .cache)
-    use_cache : bool
-        Whether to use local caching (default: True)
+        img_dir = sys._getframe(1).f_globals.get("IMG_DIR", ".")
 
-    Returns
-    -------
-    pd.DataFrame
-        Loaded data
+    filename = Path(img_dir) / f"{name}.{format}"
+    save_figure(fig, filename, format=format, **kwargs)
 
-    Notes
-    -----
-    When use_cache=True and path is a GCS path:
-    - First run: downloads from GCS and saves to cache_dir
-    - Subsequent runs: loads from cache (much faster!)
-    """
-    if path.startswith("gs://"):
-        if gcs_fs is None:
-            raise ValueError("gcs_fs required for GCS paths")
 
-        # Generate cache filename
-        cache_filename = path.replace("gs://", "").replace("/", "_")
-        cache_path = os.path.join(cache_dir, cache_filename)
+def _read_gcs_file(gcs_fs, path: str) -> bytes:
+    from tqdm.auto import tqdm
 
-        # Check if cached version exists
-        if use_cache and os.path.exists(cache_path):
-            print(f"📦 Loading from cache: {cache_filename}")
-            df = pd.read_parquet(cache_path, columns=columns)
-            print(f"✓ Loaded {len(df):,} rows (cached)")
-            return df
+    gcs_path = _strip_gs_prefix(path)
+    file_size = None
 
-        # Download from GCS with progress
-        gcs_path = path.replace("gs://", "")
+    try:
+        file_size = gcs_fs.info(gcs_path).get("size")
+    except Exception:
+        pass
 
-        print(f"📥 Downloading from GCS: {os.path.basename(gcs_path)}")
+    with gcs_fs.open(gcs_path, "rb") as handle:
+        if not file_size:
+            return handle.read()
 
-        # Get file size for progress bar
-        try:
-            file_info = gcs_fs.info(gcs_path)
-            file_size = file_info.get('size', 0)
-            file_size_mb = file_size / (1024 * 1024)
-            print(f"   Size: {file_size_mb:.1f} MB")
-        except:
-            file_size = None
+        chunks = []
+        with tqdm(total=file_size, unit="B", unit_scale=True, desc="Downloading") as pbar:
+            while chunk := handle.read(1024 * 1024):
+                chunks.append(chunk)
+                pbar.update(len(chunk))
 
-        # Read with progress indication
-        with gcs_fs.open(gcs_path, 'rb') as f:
-            if file_size:
-                # Wrap file object with tqdm for progress
-                with tqdm(total=file_size, unit='B', unit_scale=True, desc="Downloading") as pbar:
-                    # Read in chunks to show progress
-                    chunks = []
-                    chunk_size = 1024 * 1024  # 1MB chunks
-                    while True:
-                        chunk = f.read(chunk_size)
-                        if not chunk:
-                            break
-                        chunks.append(chunk)
-                        pbar.update(len(chunk))
+    return b"".join(chunks)
 
-                    # Combine chunks and parse
-                    content = b''.join(chunks)
-                    df = pq.read_table(io.BytesIO(content), columns=columns).to_pandas()
-            else:
-                # Fallback without progress
-                df = pq.read_table(f, columns=columns).to_pandas()
 
-        print(f"✓ Loaded {len(df):,} rows from GCS")
+def _cache_path(path: str, cache_dir: str | os.PathLike[str]) -> Path:
+    cache_filename = _strip_gs_prefix(path).replace("/", "_")
+    return Path(cache_dir) / cache_filename
 
-        # Cache for future use (save full file even if only some columns were requested)
-        if use_cache:
-            os.makedirs(cache_dir, exist_ok=True)
-            # Re-read full table for caching if columns were specified
-            if columns is not None:
-                with gcs_fs.open(gcs_path, 'rb') as f:
-                    full_df = pq.read_table(f).to_pandas()
-                full_df.to_parquet(cache_path)
-            else:
-                df.to_parquet(cache_path)
-            print(f"💾 Cached to: {cache_path}")
 
-        return df
-    else:
-        # Local file
-        df = pd.read_parquet(path, columns=columns)
-        print(f"✓ Loaded {len(df):,} rows")
-        return df
+def _strip_gs_prefix(path: str) -> str:
+    return path.removeprefix("gs://")
+
