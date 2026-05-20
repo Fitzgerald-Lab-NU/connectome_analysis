@@ -24,7 +24,11 @@ additional columnar structure, including:
 - spatial input kernels onto T4/T5 subtypes.
 
 These derived tables are saved under `results/` and are used for downstream
-visualization and quantitative analysis of columnar connectivity.
+visualization and analysis of columnar connectivity.
+
+**Goals:**
+- Quantify variability
+- Priors for modeling. 
 
 ## Repository Layout
 
