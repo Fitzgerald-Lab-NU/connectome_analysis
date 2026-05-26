@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "male-cns-var"
+version = "0.1.0"
+description = "Notebook utilities for male CNS optic lobe connectome analysis."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "gcsfs>=2024.2",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "pyarrow>=14",
+    "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+analysis = [
+    "matplotlib>=3.8",
+    "networkx>=3.0",
+    "plotly>=5.18",
+    "scipy>=1.11",
+    "seaborn>=0.13",
+]
+notebooks = [
+    "ipykernel>=6.29",
+    "jupyterlab>=4.0",
+]
+neuron = [
+    "navis>=1.6",
+    "trimesh>=4.0",
+]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+]
+
+[tool.setuptools.packages.find]
+include = ["utils*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
