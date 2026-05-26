@@ -44,3 +44,13 @@ visualization and analysis of columnar connectivity.
 ├── ct1_edgelist_columnar.ipynb    # Assign CT1 synapses to columns
 ├── ct1_edgelist_full.ipynb        # Full CT1 edge-list construction
 └── visualize_kernels.ipynb        # Plot spatial input kernels
+```
+
+## Install 
+``` text
+conda create -n connectome python=3.11 pip -y
+conda activate connectome
+cd /home/guardomayas/NUIN/sjbcs/male_cns_var
+python -m pip install -e ".[analysis,notebooks]"
+python -m ipykernel install --user --name connectome --display-name "Python (connectome)"
+``` text 
