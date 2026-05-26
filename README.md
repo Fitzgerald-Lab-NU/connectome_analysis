@@ -38,11 +38,11 @@ visualization and analysis of columnar connectivity.
 │   ├── io.py                      # Local/GCS data loading and cache helpers
 │   └── plotting.py                # Coordinate conversion and plotting helpers
 ├── results/connectome/            # Derived Feather tables
-├── create_analysis_edgelist.ipynb # Build analysis-ready edge lists
-├── optic_columnar_connectome.ipynb
-├── T4_T5_cols.ipynb               # Infer T4/T5 column identities
-├── ct1_edgelist_columnar.ipynb    # Assign CT1 synapses to columns
-├── ct1_edgelist_full.ipynb        # Full CT1 edge-list construction
+├── optic_col_connectome/          # Notebooks to create the OL columnar connectome w/CT1
+  ├── T4_T5_cols.ipynb                 # Infer T4/T5 column identities
+  ├── ct1_edgelist_columnar.ipynb      # Assign CT1 synapses to columns
+  ├── ct1_edgelist_full.ipynb          # Full CT1 edge-list construction
+  ├── optic_columnar_connectome.ipynb  # Build analysis-ready edge lists
 └── visualize_kernels.ipynb        # Plot spatial input kernels
 ```
 
