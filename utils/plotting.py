@@ -7,7 +7,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm,  SymLogNorm
 from matplotlib.patches import RegularPolygon
+import matplotlib as mpl
 import math
+
+### TODO: 
+### Frame it as a connectome_view class object. 
 ### HELPER FUNCTIONS###
 def pq_to_xy(p, q, flip_p=True, hexsize: float = 1.0, rotate: float | None = -np.pi / 6):
     """Convert Zhao-style hex coordinates to 2D xy coordinates."""
@@ -184,24 +188,30 @@ def plot_spatial_kernel_hex(
 
     return ax
 
-def plot_example_RFs(kernels, 
-                     n_samples = 20,
-                     max_cols = 6):
-    valid_posts = (
-        kernels
-        .dropna(subset=["post", "target_p", "target_q"])
-        [["post", "target_p", "target_q"]]
-        .drop_duplicates()
-    )
+## Helper to get random ids for plotting
+def _get_sample_ids(full_kernels, n_samples, seed):
+    valid_post_cells = (
+            full_kernels
+            .dropna(subset=["post", "target_p", "target_q"])
+            [["post", "target_p", "target_q"]]
+            .drop_duplicates()
+        )
 
-    n_samples = min(n_samples, len(valid_posts))
+    n_samples = min(n_samples, len(valid_post_cells))
 
     post_ids = (
-        valid_posts["post"]
-        .sample(n=n_samples, random_state=1)
+        valid_post_cells["post"]
+        .sample(n=n_samples, random_state=seed)
         .to_list()
     )
+    return post_ids
 
+def plot_example_RFs(kernels, 
+                     n_samples = 20,
+                     max_cols = 6,
+                     seed=1):
+    
+    post_ids  = _get_sample_ids(kernels, n_samples, seed=seed)
     # only values from sampled cells
     plot_df = kernels[kernels["post"].isin(post_ids)].copy()
 
@@ -257,3 +267,156 @@ def plot_example_RFs(kernels,
     # plt.tight_layout(rect=[0, 0, 0.92, 0.96])
     plt.show()
     
+def plot_kernels_on_eye(full_kernels, n_samples, 
+                        fontsize = 16, 
+                        size= (8, 8),
+                        seed=1):
+        df = full_kernels.copy()
+
+        post_ids  = _get_sample_ids(full_kernels, n_samples, seed=seed)
+        plot_df = full_kernels[full_kernels["post"].isin(post_ids)].copy()
+        # Absolute presynaptic/input column coordinates
+        plot_df["input_p"] = plot_df["target_p"] - plot_df["dp"]
+        plot_df["input_q"] = plot_df["target_q"] - plot_df["dq"]
+
+        # Collapse in case multiple rows map to same input column for same post cell
+        plot_df = (
+            plot_df
+            .groupby(["post", "target_p", "target_q", "input_p", "input_q"], as_index=False)
+            .agg(signed_count=("signed_count", "sum"))
+        )
+
+        # Background eye map: all T5 home columns in this full table
+        eye = (
+            df[["target_p", "target_q"]]
+            .dropna()
+            .drop_duplicates()
+            .rename(columns={"target_p": "p", "target_q": "q"})
+        )
+
+        x_eye, y_eye = pq_to_xy(
+            eye["p"].to_numpy(),
+            eye["q"].to_numpy(),
+            hexsize=1.0,
+            rotate=-np.pi / 6,
+        )
+
+        eye["x_plot"] = x_eye
+        eye["y_plot"] = y_eye
+
+        # Input columns for the selected cells
+        x_in, y_in = pq_to_xy(
+            plot_df["input_p"].to_numpy(),
+            plot_df["input_q"].to_numpy(),
+            hexsize=1.0,
+            rotate=-np.pi / 6,
+        )
+
+        plot_df["x_plot"] = x_in
+        plot_df["y_plot"] = y_in
+
+        # Home columns for the selected cells
+        homes = (
+            plot_df[["post", "target_p", "target_q"]]
+            .drop_duplicates()
+            .rename(columns={"target_p": "p", "target_q": "q"})
+        )
+
+        x_home, y_home = pq_to_xy(
+            homes["p"].to_numpy(),
+            homes["q"].to_numpy(),
+            hexsize=1.0,
+            rotate=-np.pi / 6,
+        )
+
+        homes["x_plot"] = x_home
+        homes["y_plot"] = y_home
+
+        mirror_y = True
+        if mirror_y:
+            eye["y_plot"] = -eye["y_plot"]
+            plot_df["y_plot"] = -plot_df["y_plot"]
+            homes["y_plot"] = -homes["y_plot"]
+        hexsize = 1.0
+        cmap = plt.get_cmap("bwr")
+        vmax = np.nanmax(np.abs(plot_df['signed_count']))
+
+        norm = TwoSlopeNorm(
+            vmin=-vmax,
+            vcenter=0,
+            vmax=vmax
+        )
+
+        # norm = SymLogNorm(
+        #     linthresh=1,      # values between -1 and 1 are linear
+        #     linscale=1,
+        #     vmin=-vmax,
+        #     vmax=vmax,
+        #     base=10
+        # )
+
+        fig, ax = plt.subplots(figsize=size)
+
+        # 1. Plot all T columns as pale background
+        for _, row in eye.iterrows():
+            ax.add_patch(
+                RegularPolygon(
+                    (row["x_plot"], row["y_plot"]),
+                    numVertices=6,
+                    radius=hexsize * 0.95,
+                    orientation=np.pi / 6,
+                    facecolor="lightgray",
+                    edgecolor="white",
+                    linewidth=0.4,
+                    alpha=0.6,
+                )
+            )
+
+        # 2. Plot selected input columns colored by synapse count
+        # Draw only nonzero input bins if desired
+        nonzero_inputs = plot_df[plot_df["signed_count"] != 0].copy()
+
+        for _, row in nonzero_inputs.iterrows():
+            ax.add_patch(
+                RegularPolygon(
+                    (row["x_plot"], row["y_plot"]),
+                    numVertices=6,
+                    radius=hexsize * 0.95,
+                    orientation=np.pi / 6,
+                    facecolor=cmap(norm(row["signed_count"])),
+                    edgecolor="black",
+                    linewidth=0.6,
+                    alpha=0.9,
+                )
+            )
+
+        # 3. Highlight the three T home columns by darkening/outline
+        for _, row in homes.iterrows():
+            ax.add_patch(
+                RegularPolygon(
+                    (row["x_plot"], row["y_plot"]),
+                    numVertices=6,
+                    radius=hexsize * 0.95,
+                    orientation=np.pi / 6,
+                    facecolor="none",
+                    edgecolor="black",
+                    linewidth=2.5,
+                    hatch="///",
+                )
+            )
+
+        sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+        sm.set_array([])
+        fig.colorbar(sm, ax=ax, shrink=0.75, label="input synapse count")
+
+        ax.set_aspect("equal")
+        ax.autoscale_view()
+        ax.axis("off")
+
+        fig.suptitle(
+            f"{full_kernels['pre_cell_type'].iloc[0]} to "
+            f"{full_kernels['post_cell_type'].iloc[0]} example kernels",
+            fontsize=fontsize,
+        )
+
+        plt.show()
