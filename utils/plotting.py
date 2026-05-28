@@ -420,3 +420,76 @@ def plot_kernels_on_eye(full_kernels, n_samples,
         )
 
         plt.show()
+        
+def receptive_fields_grid(kernels, value_col, input_types, post_type):
+    all_vals = np.concatenate([
+        k[value_col].to_numpy()
+        for k in kernels.values()
+    ])
+
+    vmax = np.nanmax(np.abs(all_vals))*0.8
+
+    norm = TwoSlopeNorm(
+        vmin=-vmax,
+        vcenter=0,
+        vmax=vmax
+    )
+
+    # norm = SymLogNorm(
+    #     linthresh=1,      # values between -1 and 1 are linear
+    #     linscale=1,
+    #     vmin=-vmax,
+    #     vmax=vmax,
+    #     base=10
+    # )
+
+    import math
+    n = len(input_types)
+    ncols = min(4, n)
+    nrows = math.ceil(n / ncols)
+
+    fig, axes = plt.subplots(
+        nrows,
+        ncols,
+        figsize=(2 * ncols, 2 * nrows),
+        squeeze=False
+    )
+
+    axes_flat = axes.flatten()
+
+    for ax, pre_type in zip(axes_flat, input_types):
+        plot_spatial_kernel_hex(
+            kernels[pre_type],
+            value_col=value_col,
+            radius=2,
+            cmap="bwr",
+            norm=norm,
+            ax=ax,
+            title=f"{pre_type} → {post_type}",
+            plot_labels=True, 
+            use_input_relative_to_target=True,
+            mirror_x=True,
+            mirror_y=True,
+        )
+
+
+    for ax in axes_flat:
+        ax.axis("off")
+
+    # Common colorbar
+    sm = plt.cm.ScalarMappable(norm=norm, cmap=plt.get_cmap("bwr"))
+    sm.set_array([])
+    plt.tight_layout(rect=[0, 0, 0.88, 1]) #[left, bottom, right, top]
+
+    cax = fig.add_axes([0.97, 0.25, 0.02, 0.5]) # [left, bottom, width, height]
+    cbar = fig.colorbar(
+        sm,
+        cax=cax,
+        shrink=0.4,
+        location="right",
+        label="Mean signed synapse count"
+    )
+
+
+    fig.tight_layout()
+    plt.show()
