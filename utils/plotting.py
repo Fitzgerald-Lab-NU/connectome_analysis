@@ -7,7 +7,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm,  SymLogNorm
 from matplotlib.patches import RegularPolygon
-
+import math
 ### HELPER FUNCTIONS###
 def pq_to_xy(p, q, flip_p=True, hexsize: float = 1.0, rotate: float | None = -np.pi / 6):
     """Convert Zhao-style hex coordinates to 2D xy coordinates."""
@@ -183,3 +183,77 @@ def plot_spatial_kernel_hex(
         fig.colorbar(sm, ax=ax, label=value_col)
 
     return ax
+
+def plot_example_RFs(kernels, 
+                     n_samples = 20,
+                     max_cols = 6):
+    valid_posts = (
+        kernels
+        .dropna(subset=["post", "target_p", "target_q"])
+        [["post", "target_p", "target_q"]]
+        .drop_duplicates()
+    )
+
+    n_samples = min(n_samples, len(valid_posts))
+
+    post_ids = (
+        valid_posts["post"]
+        .sample(n=n_samples, random_state=1)
+        .to_list()
+    )
+
+    # only values from sampled cells
+    plot_df = kernels[kernels["post"].isin(post_ids)].copy()
+
+    vmax = np.abs(plot_df["signed_count"]).max()
+    shared_norm = TwoSlopeNorm(vmin=-vmax, vcenter=0, vmax=vmax)
+
+    n = len(post_ids)
+    ncols = min(max_cols, n)
+    nrows = math.ceil(n / ncols)
+
+    fig, axes = plt.subplots(
+        nrows,
+        ncols,
+        figsize=(3.5 * ncols, 3.5 * nrows),
+        squeeze=False,
+    )
+
+    fig.suptitle(
+        f"{plot_df['pre_cell_type'].iloc[0]} to "
+        f"{plot_df['post_cell_type'].iloc[0]} example kernels",
+        fontsize=18,
+    )
+
+    axes_flat = axes.ravel()
+    for ax, post_id in zip(axes_flat, post_ids):
+        ax.axis("off")
+        cell_df = plot_df[plot_df['post']==post_id]
+        plot_spatial_kernel_hex(cell_df, value_col="signed_count", 
+                            radius=4, cmap="bwr", 
+                            norm = shared_norm, 
+                            add_colorbar=False,
+                            plot_labels=True, 
+                            ax=ax,use_input_relative_to_target=True,
+                            mirror_x=True,
+                            mirror_y=True,
+                            title=post_id)
+    for ax in axes_flat[n:]:
+        ax.axis("off")
+    sm = plt.cm.ScalarMappable(norm=shared_norm, cmap=plt.get_cmap("bwr"))
+    sm.set_array([])
+
+    cax = fig.add_axes([0.9, 0.25, 0.02, 0.5]) # [left, bottom, width, height]
+    cbar = fig.colorbar(
+        sm,
+        cax=cax,
+        shrink=0.4,
+        location="right",
+        label="Mean signed synapse count",
+    )
+    cbar.ax.tick_params(labelsize=14)
+    cbar.set_label("signed_count", fontsize=16)
+    plt.tight_layout(rect=[0, 0, 0.88, 1]) #[left, bottom, right, top]
+    # plt.tight_layout(rect=[0, 0, 0.92, 0.96])
+    plt.show()
+    

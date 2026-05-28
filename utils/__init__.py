@@ -17,6 +17,11 @@ from .plotting import (
     hex_distance, 
     hex_offsets
     )
+from .spatial_RF import (_get_ct1_post_units, 
+                         _add_ct1_post_ids, 
+                         _get_post_units, 
+                         _zero_fill_kernel)
+
 
 __all__ = [
     "batch_read_swc_from_gcs",
