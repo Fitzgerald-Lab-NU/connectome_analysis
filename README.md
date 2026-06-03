@@ -27,8 +27,13 @@ These derived tables are saved under `results/` and are used for downstream
 visualization and analysis of columnar connectivity.
 
 **Goals:**
-- Quantify variability
+- Quantify variability in inputs to to motion pathway
+  - Specific subtypes?
+  - Correlations in the variability:
+    - How the spatial pattern of input A relates back to the pattern of input B. 
 - Priors for modeling. 
+  - Mean spatial kernel
+  - Allowed variation from mean, either on strength or shape. 
 
 ## Repository Layout
 
