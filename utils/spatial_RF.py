@@ -1,5 +1,6 @@
+import pandas as pd
 ### SPATIAL RF UTILS ####
-from .plotting import pq_to_xy, hex_distance, hex_offsets
+from .hex_geometry import pq_to_xy, hex_distance, hex_offsets
 def _get_post_units(edges, df, post_type, same_side):
     post_units = (
         edges.query("post_cell_type == @post_type")
@@ -39,25 +40,6 @@ def _get_ct1_post_units(df):
 
     return post_units
 
-
-# def _get_observed(df, group_cols):
-#     observed = (
-#         df
-#         .dropna(subset=group_cols)
-#         .copy()
-#     )
-
-#     observed["dp"] = observed["dp"].astype(int)
-#     observed["dq"] = observed["dq"].astype(int)
-
-#     return (
-#         observed
-#         .groupby(group_cols, as_index=False)
-#         .agg(
-#             count=("count", "sum"),
-#             signed_count=("signed_count", "sum"),
-#         )
-#     )
 
 
 def _add_ct1_post_ids(df):
@@ -215,3 +197,15 @@ def all_input_kernels(post_type, edges, radius=2.0, threshold=1.0, value_col='si
     print("Strong input types: ", input_types)
         
     return mean_kernels, full_kernels, input_types
+
+def vector_to_kernel(vec, value_name="value"):
+    rows = []
+    for offsets, count in vec.items():
+        dp, dq = offsets.split("_")
+        rows.append({
+            "dp": int(dp),
+            "dq": int(dq),
+            value_name: count,
+        })
+
+    return pd.DataFrame(rows)

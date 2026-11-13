@@ -12,13 +12,14 @@ from .io import (
     setup_gcs,
 )
 from .plotting import (
-    pq_to_xy, 
-    plot_spatial_kernel_hex,
-    hex_distance, 
-    hex_offsets, vector_to_kernel, plot_stats
+    plot_spatial_kernel_hex, plot_stats
     )
+from .hex_geometry import (
+    hex_distance,
+    hex_offsets,
+    pq_to_xy)
 from .spatial_RF import (_get_ct1_post_units, all_input_kernels,
-                         _add_ct1_post_ids, 
+                         _add_ct1_post_ids,  vector_to_kernel,
                          _zero_fill_kernel, compute_kernel)
 
 from .type_pair_stats import stats_ctype_pair
