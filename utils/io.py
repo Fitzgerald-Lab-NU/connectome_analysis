@@ -17,6 +17,9 @@ VALID_FILE_TYPES = {
     "skeletons",
 }
 
+REPO = Path(__file__).resolve().parents[1]          # .../male_cns_var
+DATA = REPO / "connectome_data"                     # raw + processed (untracked)
+RESULTS = REPO / "results" / "connectome"           # tracked outputs
 
 def setup_gcs(token: str = "google_default"):
     """Return a Google Cloud Storage filesystem."""

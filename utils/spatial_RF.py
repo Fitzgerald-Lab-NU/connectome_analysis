@@ -139,9 +139,8 @@ def compute_kernel(
     full["signed_count"] = full["signed_count"].fillna(0)
 
     # Reconstruct absolute input/source column coordinates.
-    # Check sign convention: this assumes dp = source_p - target_p. #Not strictyl right!
-    full["source_p"] = full["target_p"] + full["dp"]
-    full["source_q"] = full["target_q"] + full["dq"]
+    full["source_p"] = full["target_p"] - full["dp"]
+    full["source_q"] = full["target_q"] - full["dq"]
 
     full["pre_cell_type"] = pre_type
     full["post_cell_type"] = post_type

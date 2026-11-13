@@ -1,5 +1,5 @@
 """Shared helpers for the male CNS connectome analysis notebooks."""
-
+from .io import REPO, DATA, RESULTS
 from .io import (
     batch_read_swc_from_gcs,
     construct_path,
@@ -14,6 +14,7 @@ from .io import (
 from .plotting import (
     plot_spatial_kernel_hex, plot_stats
     )
+
 from .hex_geometry import (
     hex_distance,
     hex_offsets,
