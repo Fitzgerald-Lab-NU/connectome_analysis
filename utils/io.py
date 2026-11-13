@@ -7,7 +7,7 @@ import os
 import tempfile
 from pathlib import Path
 from typing import Iterable, Sequence
-
+import pandas as pd
 
 VALID_FILE_TYPES = {
     "meta",
@@ -274,3 +274,17 @@ def _cache_path(path: str, cache_dir: str | os.PathLike[str]) -> Path:
 def _strip_gs_prefix(path: str) -> str:
     return path.removeprefix("gs://")
 
+# utils/io.py
+PROJECT_ROOT = Path(__file__).resolve().parents[1]   # repo root, works from any folder
+CONNECTOME_DIR = PROJECT_ROOT / "results" / "connectome"
+
+def load_columnar_connectome(norm: bool = True):
+    """Return (edges, nodes) for the optic-lobe columnar connectome.
+
+    norm=True uses the T4/T5 column assignment based on normalized input counts
+    (*_T4T5norm files); norm=False uses the raw-count assignment.
+    """
+    suffix = "_T4T5norm" if norm else ""
+    edges = pd.read_feather(CONNECTOME_DIR / f"edgelist_OL_columnar{suffix}.feather")
+    nodes = pd.read_feather(CONNECTOME_DIR / f"nodes_OL_columnar{suffix}.feather")
+    return edges, nodes
