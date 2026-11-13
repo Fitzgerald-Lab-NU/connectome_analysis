@@ -175,3 +175,43 @@ def compute_kernel(
     )
 
     return kernel, full
+
+def all_input_kernels(post_type, edges, radius=2.0, threshold=1.0, value_col='signed_count'):
+    mean_kernels = {}
+    full_kernels = {}
+
+    POST_TYPE_inputs = edges.query("post_cell_type == @post_type").copy()
+    input_types = POST_TYPE_inputs["pre_cell_type"].unique()
+
+    # Compute per-input full kernels
+    for pre_type in input_types:
+        mean_kernel, full = compute_kernel(
+            edges,
+            pre_type=pre_type,
+            post_type=post_type,
+            radius=radius,
+        )
+
+        mean_kernels[pre_type] = mean_kernel
+        full_kernels[pre_type] = full
+        
+        ### Filter out connections below our threshold
+    kernel_strength = {
+        pre_type: mean_kernels[pre_type]["mean_signed_count"].abs().max()
+        for pre_type in input_types
+    }
+
+    input_types = [
+        pre_type
+        for pre_type in input_types
+        if kernel_strength[pre_type] >= threshold
+    ]
+
+    input_types = sorted(
+        input_types,
+        key=lambda pre_type: kernel_strength[pre_type],
+        reverse=True
+    )
+    print("Strong input types: ", input_types)
+        
+    return mean_kernels, full_kernels, input_types

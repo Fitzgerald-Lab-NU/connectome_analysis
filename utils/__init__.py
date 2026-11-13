@@ -15,12 +15,14 @@ from .plotting import (
     pq_to_xy, 
     plot_spatial_kernel_hex,
     hex_distance, 
-    hex_offsets
+    hex_offsets, vector_to_kernel, plot_stats
     )
-from .spatial_RF import (_get_ct1_post_units, 
+from .spatial_RF import (_get_ct1_post_units, all_input_kernels,
                          _add_ct1_post_ids, 
                          _get_post_units, 
-                         _zero_fill_kernel)
+                         _zero_fill_kernel, compute_kernel)
+
+from .type_pair_stats import stats_ctype_pair
 
 
 __all__ = [

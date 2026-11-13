@@ -9,10 +9,54 @@ from matplotlib.colors import TwoSlopeNorm,  SymLogNorm
 from matplotlib.patches import RegularPolygon
 import matplotlib as mpl
 import math
+import seaborn as sns
 
 ### TODO: 
 ### Frame it as a connectome_view class object. 
-### HELPER FUNCTIONS###
+
+### DF VECTOR TO KERNEL FOR PLOTTING
+def vector_to_kernel(vec, value_name="value"):
+    rows = []
+    for offsets, count in vec.items():
+        dp, dq = offsets.split("_")
+        rows.append({
+            "dp": int(dp),
+            "dq": int(dq),
+            value_name: count,
+        })
+
+    return pd.DataFrame(rows)
+
+def plot_stats(plot_df, ax, color,metric):
+   
+    sns.violinplot(
+    data=plot_df,
+    x="pre_type",
+    y="value",
+    inner=None,
+    cut=0,
+    color= color,
+    ax= ax
+    )
+    
+    sns.pointplot(
+    data=plot_df,
+    x="pre_type",
+    y="value",
+    estimator=np.median,
+    errorbar=None,
+    markers="_",
+    linestyles="none",
+    color="black",
+    # scale=1.5,
+    ax=ax
+    )
+    
+    # ax.set_title(f"{metric} distribution")
+    # ax.set_xlabel("Input type")
+    ax.set_ylabel(metric)
+
+### HELPER FUNCTIONS FOR GRID LIKE PLOTS###
 def pq_to_xy(p, q, flip_p=True, hexsize: float = 1.0, rotate: float | None = -np.pi / 6):
     """Convert Zhao-style hex coordinates to 2D xy coordinates."""
     a = q
@@ -67,6 +111,7 @@ def plot_spatial_kernel_hex(
     title=None,
     ax=None,
     add_colorbar=False,
+    emphasize_center=False,
     fs=14
 ):
     """
@@ -152,20 +197,20 @@ def plot_spatial_kernel_hex(
                 va="center",
                 color="black"
             )
-
-    # Draw center hex ONCE, not inside the loop
-    ax.add_patch(
-        RegularPolygon(
-            (0, 0),
-            numVertices=6,
-            radius=hexsize,
-            orientation=np.pi / 6,
-            facecolor="none",
-            edgecolor="darkgray",
-            linewidth=2.5,
-            hatch="///",
+    if emphasize_center:
+        # Draw center hex ONCE, not inside the loop
+        ax.add_patch(
+            RegularPolygon(
+                (0, 0),
+                numVertices=6,
+                radius=hexsize,
+                orientation=np.pi / 6,
+                facecolor="none",
+                edgecolor="darkgray",
+                linewidth=2.5,
+                hatch="///",
+            )
         )
-    )
 
     if len(x) > 0:
         pad = 2 * hexsize
@@ -209,15 +254,22 @@ def _get_sample_ids(full_kernels, n_samples, seed):
 def plot_example_RFs(kernels, 
                      n_samples = 20,
                      max_cols = 6,
-                     seed=1):
+                     seed=1,
+                     emphasize_center=False,
+                     signed_norm = True,
+                     value_col = "signed_count",
+                     plot_labels = False,
+                     cmap = "bwr"):
     
     post_ids  = _get_sample_ids(kernels, n_samples, seed=seed)
     # only values from sampled cells
     plot_df = kernels[kernels["post"].isin(post_ids)].copy()
 
-    vmax = np.abs(plot_df["signed_count"]).max()
-    shared_norm = TwoSlopeNorm(vmin=-vmax, vcenter=0, vmax=vmax)
-
+    vmax = np.abs(plot_df[value_col]).max()
+    if signed_norm:
+        shared_norm = TwoSlopeNorm(vmin=-vmax, vcenter=0, vmax=vmax)
+    else: 
+        shared_norm = mpl.colors.Normalize(vmin=0, vmax=vmax)
     n = len(post_ids)
     ncols = min(max_cols, n)
     nrows = math.ceil(n / ncols)
@@ -239,18 +291,19 @@ def plot_example_RFs(kernels,
     for ax, post_id in zip(axes_flat, post_ids):
         ax.axis("off")
         cell_df = plot_df[plot_df['post']==post_id]
-        plot_spatial_kernel_hex(cell_df, value_col="signed_count", 
-                            radius=4, cmap="bwr", 
+        plot_spatial_kernel_hex(cell_df, value_col=value_col, 
+                            radius=4, cmap=cmap, 
                             norm = shared_norm, 
                             add_colorbar=False,
-                            plot_labels=True, 
+                            plot_labels=plot_labels, 
                             ax=ax,use_input_relative_to_target=True,
                             mirror_x=True,
                             mirror_y=True,
-                            title=post_id)
+                            title=post_id,
+                            emphasize_center=emphasize_center)
     for ax in axes_flat[n:]:
         ax.axis("off")
-    sm = plt.cm.ScalarMappable(norm=shared_norm, cmap=plt.get_cmap("bwr"))
+    sm = plt.cm.ScalarMappable(norm=shared_norm, cmap=plt.get_cmap(cmap))
     sm.set_array([])
 
     cax = fig.add_axes([0.9, 0.25, 0.02, 0.5]) # [left, bottom, width, height]
@@ -262,7 +315,7 @@ def plot_example_RFs(kernels,
         label="Mean signed synapse count",
     )
     cbar.ax.tick_params(labelsize=14)
-    cbar.set_label("signed_count", fontsize=16)
+    cbar.set_label(value_col, fontsize=16)
     plt.tight_layout(rect=[0, 0, 0.88, 1]) #[left, bottom, right, top]
     # plt.tight_layout(rect=[0, 0, 0.92, 0.96])
     plt.show()
@@ -421,7 +474,10 @@ def plot_kernels_on_eye(full_kernels, n_samples,
 
         plt.show()
         
-def receptive_fields_grid(kernels, value_col, input_types, post_type):
+def receptive_fields_grid(kernels, value_col, 
+                          input_types, post_type, 
+                          plot_labels=False,
+                          emphasize_center=True):
     all_vals = np.concatenate([
         k[value_col].to_numpy()
         for k in kernels.values()
@@ -466,10 +522,11 @@ def receptive_fields_grid(kernels, value_col, input_types, post_type):
             norm=norm,
             ax=ax,
             title=f"{pre_type} → {post_type}",
-            plot_labels=True, 
+            plot_labels=plot_labels, 
             use_input_relative_to_target=True,
             mirror_x=True,
             mirror_y=True,
+            emphasize_center=emphasize_center
         )
 
 
